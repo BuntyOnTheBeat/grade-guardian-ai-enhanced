@@ -3,6 +3,7 @@ import { Upload, File, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
+import { extractText, getFileInputAccept, isFileTypeSupported } from '@/services/fileTextExtraction';
 
 interface FileDropZoneProps {
   onFileSelect: (file: File | null) => void;
@@ -53,30 +54,24 @@ const FileDropZone = ({ onFileSelect, selectedFile, accept, label, sublabel }: F
     }
   }, [onFileSelect]);
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
       const file = files[0];
-      const fileType = file.type.toLowerCase();
-      const fileName = file.name.toLowerCase();
       
-      // Validate file type - only text files for now
-      const isValidType = 
-        fileType.includes('text') || fileName.endsWith('.txt') ||
-        fileName.endsWith('.md');
-        
-      if (!isValidType) {
+      // Validate file type using the new service
+      if (!isFileTypeSupported(file.type, file.name)) {
         toast({
           title: 'Unsupported File Type',
-          description: 'Only text files (.txt, .md) are currently supported. PDF support is temporarily disabled due to technical issues and will be restored soon!',
+          description: 'Supported formats: .txt, .pdf, .docx files. Please upload a file in one of these formats.',
           variant: 'destructive',
         });
         onFileSelect(null);
         return;
       }
       
-      // Estimate tokens for text files (PDF parsing happens during analysis)
-      if (fileType.includes('text') || fileName.endsWith('.txt') || fileName.endsWith('.md')) {
+      // For text files, we can estimate tokens immediately
+      if (file.type.includes('text') || file.name.toLowerCase().endsWith('.txt') || file.name.toLowerCase().endsWith('.md')) {
         const reader = new FileReader();
         reader.onload = (ev) => {
           const text = ev.target?.result as string;
@@ -87,7 +82,8 @@ const FileDropZone = ({ onFileSelect, selectedFile, accept, label, sublabel }: F
         };
         reader.readAsText(file);
       } else {
-        // For PDFs, we can't estimate tokens until parsing, so just accept the file
+        // For PDFs and DOCX files, we can't estimate tokens until parsing
+        // So just accept the file and show a note
         setTokenInfo(null);
         onFileSelect(file);
       }

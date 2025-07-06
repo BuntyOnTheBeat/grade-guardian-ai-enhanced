@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Upload, FileText, X, FolderOpen } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from '@/components/ui/progress';
+import { extractText, getFileInputAccept, isFileTypeSupported } from '@/services/fileTextExtraction';
 
 interface TextOrFileInputProps {
   id: string;
@@ -24,32 +25,21 @@ const TextOrFileInput = ({
   onChange, 
   placeholder, 
   rows = 6,
-  accept = ".pdf,.doc,.docx,.txt"
+  accept = getFileInputAccept()
 }: TextOrFileInputProps) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // Extract text from file
+  // Extract text from file using the enhanced service
   const extractTextFromFile = async (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target?.result as string;
-        resolve(text);
-      };
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      
-      // For text files, read as text
-      if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
-        reader.readAsText(file);
-      } else {
-        // For other files, we'll read as text and hope for the best
-        // In a real app, you'd want to use libraries like pdf-parse for PDFs
-        reader.readAsText(file);
-      }
-    });
+    // Check if file type is supported
+    if (!isFileTypeSupported(file.type, file.name)) {
+      throw new Error(`Unsupported file type: ${file.type || 'unknown'}. Supported formats: .txt, .pdf, .docx`);
+    }
+    
+    return await extractText(file);
   };
 
   // Token estimation utility
@@ -184,7 +174,7 @@ const TextOrFileInput = ({
               )}
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              Supports: .txt, .pdf, .doc, .docx files
+              Supports: .txt, .pdf, .docx files
             </p>
             {isProcessing && (
               <div className="flex items-center justify-center mt-3">

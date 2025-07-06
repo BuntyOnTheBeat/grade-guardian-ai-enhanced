@@ -16,6 +16,7 @@ import { addCredits } from '@/services/creditsService';
 import FileDropZone from '@/components/FileDropZone';
 import TextOrFileInput from '@/components/TextOrFileInput';
 import { Progress } from '@/components/ui/progress';
+import { getFileInputAccept } from '@/services/fileTextExtraction';
 
 const SubmitWork = () => {
   const { classId } = useParams();
@@ -304,9 +305,9 @@ Or upload a file using the file upload section below."
                         if (file) setAssignmentText('');
                       }}
                       selectedFile={assignmentFile}
-                      accept=".txt,.md"
+                      accept={getFileInputAccept()}
                       label="Drop your assignment file here or click to browse"
-                      sublabel="Currently supports: .txt and .md files only"
+                      sublabel="Supports: .txt, .pdf, .docx files"
                     />
                   </div>
                   {assignmentFile && (

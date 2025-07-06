@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { analyzeHomework } from '@/services/aiService';
 import FileDropZone from '@/components/FileDropZone';
 import DetailedFeedback from '@/components/DetailedFeedback';
+import { getFileInputAccept } from '@/services/fileTextExtraction';
 
 interface Assignment {
   id: string;
@@ -567,9 +568,9 @@ const AssignmentFeedback = () => {
                 <FileDropZone
                   onFileSelect={setNewFile}
                   selectedFile={newFile}
-                  accept=".txt,.md"
+                  accept={getFileInputAccept()}
                   label="Upload Revised Assignment"
-                  sublabel="Currently supports: .txt and .md files only"
+                  sublabel="Supports: .txt, .pdf, .docx files"
                 />
 
                 <Button 

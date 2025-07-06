@@ -34,41 +34,12 @@ const countTokens = (text: string): number => {
   return Math.max(estimatedTokens, charBasedTokens);
 };
 
-// Extract text from file for analysis
+// Import the new file text extraction service
+import { extractText } from './fileTextExtraction';
+
+// Extract text from file for analysis - now supports .txt, .pdf, and .docx
 const extractTextFromFile = async (file: File): Promise<string> => {
-  const fileType = file.type.toLowerCase();
-  const fileName = file.name.toLowerCase();
-  
-  console.log('📄 Extracting text from file:', { 
-    name: file.name, 
-    type: fileType, 
-    size: file.size 
-  });
-
-  // Handle text files only for now (PDF support coming soon)
-  if (fileType.includes('text') || fileName.endsWith('.txt') || fileName.endsWith('.md')) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      resolve(text);
-    };
-      reader.onerror = () => reject(new Error('Failed to read text file'));
-    reader.readAsText(file);
-  });
-  }
-
-  // Handle PDF files - temporarily unsupported
-  if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
-    throw new Error('PDF files are temporarily not supported due to technical limitations. Please convert your PDF to a .txt file and upload that instead. We\'re working on restoring PDF support soon!');
-  }
-
-  // Handle Word documents (.docx)
-  if (fileType.includes('word') || fileType.includes('document') || fileName.endsWith('.docx')) {
-    throw new Error('DOCX files are not yet supported. Please convert to TXT format.');
-  }
-
-  throw new Error(`Unsupported file type: ${fileType}. Please use TXT files only for now.`);
+  return await extractText(file);
 };
 
 // Convert file to base64 for image analysis

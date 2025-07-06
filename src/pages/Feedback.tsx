@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import FileDropZone from '@/components/FileDropZone';
 import DetailedFeedback from '@/components/DetailedFeedback';
+import { getFileInputAccept } from '@/services/fileTextExtraction';
 
 const Feedback = () => {
   const location = useLocation();
@@ -265,9 +266,9 @@ const Feedback = () => {
               <FileDropZone
                 onFileSelect={setNewFile}
                 selectedFile={newFile}
-                accept=".txt,.md"
+                accept={getFileInputAccept()}
                 label="Drop your revised assignment here"
-                sublabel="Currently supports: .txt and .md files only"
+                sublabel="Supports: .txt, .pdf, .docx files"
               />
 
               <Button
