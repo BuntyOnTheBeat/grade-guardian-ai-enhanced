@@ -55,52 +55,7 @@ const fileToBase64 = async (file: File): Promise<string> => {
   });
 };
 
-// Basic OCR using GPT-4o for text extraction from images
-const extractTextFromImage = async (file: File, apiKey: string): Promise<string> => {
-  try {
-    const base64Image = await fileToBase64(file);
-    
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: "gpt-4o", // Use GPT-4o which has vision capabilities for OCR
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Please extract all visible text from this image. Return only the text content, preserving the original formatting as much as possible."
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${file.type};base64,${base64Image}`
-                }
-              }
-            ]
-          }
-        ],
-        max_tokens: 1000,
-        temperature: 0,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`OCR failed: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content || 'No text could be extracted from the image.';
-  } catch (error) {
-    console.error('Error extracting text from image:', error);
-    throw new Error('Failed to extract text from image. Please try uploading a clearer image or a text file.');
-  }
-};
+// Note: OCR functionality moved to secure server-side Edge Function
 
 // Smart text truncation to fit within GPT-3.5-turbo limits
 const truncateTextForAnalysis = (content: string, maxTokens: number = 12000): string => {
@@ -166,7 +121,7 @@ export const analyzeHomework = async (
   userId?: string,
   assignmentName?: string
 ): Promise<AnalysisResult> => {
-  console.log('🚀 analyzeHomework function called - CACHE BUSTER v2.0:', {
+  console.log('🚀 analyzeHomework function called - SECURE SERVER-SIDE v3.0:', {
     timestamp: new Date().toISOString(),
     fileName: file.name,
     fileSize: file.size,
@@ -176,261 +131,74 @@ export const analyzeHomework = async (
     assignmentWeight
   });
   
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-  
-  if (!apiKey) {
-    throw new Error('OpenAI API key not found. Please add VITE_OPENAI_API_KEY to your .env file and restart the development server.');
-  }
+  // Import Supabase client for authentication
+  const { supabase } = await import('@/integrations/supabase/client');
 
-  if (!apiKey.startsWith('sk-')) {
-    throw new Error('Invalid OpenAI API key format. Make sure your API key starts with "sk-".');
-  }
-
-  // Import credits service functions
-  const { hasEnoughCredits, getCreditCost, deductCredits } = await import('./creditsService');
-
-  // Check if user has enough credits before analysis
-  if (userId) {
-    const isImageFile = file.type.startsWith('image/');
-    let operation: 'text_analysis' | 'image_analysis' | 'image_ocr' = 'text_analysis';
-    
-    if (isImageFile) {
-      operation = useGPT4Vision ? 'image_analysis' : 'image_ocr';
-    }
-    
-    const requiredCredits = getCreditCost(operation);
-
-    const hasCredits = await hasEnoughCredits(userId, requiredCredits);
-    if (!hasCredits) {
-      throw new Error(`Insufficient credits. This analysis requires ${requiredCredits} credits.`);
-    }
+  // Get current user session for authentication
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    throw new Error('Authentication required. Please log in to use AI analysis.');
   }
 
   const isImageFile = file.type.startsWith('image/');
   
   try {
-    let content: string;
-    let messages: any[];
-    let wasTruncated = false; // Track if content was truncated
+    let content: string | undefined;
+    let base64Image: string | undefined;
 
     if (isImageFile && useGPT4Vision) {
       // Handle image files with GPT-4o Vision
-      const base64Image = await fileToBase64(file);
-      const prompt = `Please analyze this assignment submission image and provide detailed feedback. ${rubric ? `Use this rubric for evaluation: ${rubric}` : ''} ${assignmentWeight > 0 ? `This assignment is worth ${assignmentWeight}% of the total grade.` : ''}
-
-Please provide feedback in the following JSON format:
-{
-  "overallScore": [number from 0-100],
-  "summary": "[overall summary of the work]",
-  "feedback": [
-    {
-      "type": "strength|improvement|suggestion",
-      "title": "[brief title]",
-      "description": "[detailed description]",
-      "explanation": "[why this matters and how to improve]",
-      "location": "[where in the document this applies - be specific, e.g., 'Paragraph 2, sentence 3']",
-      "rubric_criteria": "[specific rubric criteria this addresses]",
-      "original_text": "[exact text from the original if suggesting a change]",
-      "suggested_text": "[suggested replacement text if applicable]"
-    }
-  ],
-  "editable_text": "[Return the full original text, but with suggested edits enclosed in <<<original text>>> followed by +++suggested replacement+++. For example: 'This is an <<<inportant>>>+++important+++ point.' Be very specific about exact text to change.]"
-}`;
-
-      messages = [
-        {
-          role: "system",
-          content: "You are an experienced teacher providing detailed feedback on student assignments. Analyze the work thoroughly and provide constructive feedback with specific examples and actionable suggestions. Return your response as valid JSON only."
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: prompt
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:${file.type};base64,${base64Image}`
-              }
-            }
-          ]
-        }
-      ];
+      base64Image = await fileToBase64(file);
+    } else if (isImageFile && !useGPT4Vision) {
+      // Handle images with OCR - we'll need to extract text using a basic OCR function
+      // For now, we'll send the image to the server and let it handle OCR
+      base64Image = await fileToBase64(file);
     } else {
-      // Handle text files (and free-tier images after OCR)
-      const isOcrText = isImageFile && !useGPT4Vision;
-      if (isOcrText) {
-        content = await extractTextFromImage(file, apiKey);
-      } else {
+      // Handle text files
       content = await extractTextFromFile(file);
-      }
-      
-      // Apply intelligent truncation to prevent token limit errors
-      const truncatedContent = truncateTextForAnalysis(content);
-      wasTruncated = content !== truncatedContent;
-      
-      console.log('Content analysis:', {
-        originalChars: content.length,
-        originalTokens: countTokens(content),
-        finalChars: truncatedContent.length,
-        finalTokens: countTokens(truncatedContent),
-        wasTruncated
-      });
-      
-      const prompt = `Please analyze this assignment submission and provide detailed feedback. ${isOcrText ? '(This assignment was extracted from an image using OCR, so be mindful of potential errors.)' : ''} ${wasTruncated ? '(Note: This document was truncated for analysis due to length, but the full content is preserved for grading.)' : ''} ${rubric ? `Use this rubric for evaluation: ${rubric}` : ''} ${assignmentWeight > 0 ? `This assignment is worth ${assignmentWeight}% of the total grade.` : ''}
-
-IMPORTANT: For each feedback item, if you're suggesting a specific change to the text, include the exact original text and your suggested replacement. Be very specific about locations (e.g., "Paragraph 2, sentence 3" or "Introduction, line 5").
-
-Assignment content:
-${truncatedContent}
-
-Please provide feedback in the following JSON format:
-{
-  "overallScore": [number from 0-100],
-  "summary": "[overall summary of the work]",
-  "feedback": [
-    {
-      "type": "strength|improvement|suggestion",
-      "title": "[brief title]",
-      "description": "[detailed description]",
-      "explanation": "[why this matters and how to improve]",
-      "location": "[where in the document this applies - be specific, e.g., 'Paragraph 2, sentence 3']",
-      "rubric_criteria": "[specific rubric criteria this addresses]",
-      "original_text": "[exact text from the original if suggesting a change]",
-      "suggested_text": "[suggested replacement text if applicable]"
-    }
-  ],
-  "editable_text": "[Return the full original text, but with suggested edits enclosed in <<<original text>>> followed by +++suggested replacement+++. For example: 'This is an <<<inportant>>>+++important+++ point.' Be very specific about exact text to change.]"
-}`;
-
-      messages = [
-        {
-          role: "system",
-          content: "You are an experienced teacher providing detailed feedback on student assignments. Analyze the work thoroughly and provide constructive feedback with specific examples and actionable suggestions. Return your response as valid JSON only."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ];
     }
 
-    // Determine model based on user type and content
-    const modelToUse = (useGPT4Vision && isImageFile) ? "gpt-4o" : "gpt-3.5-turbo";
-    
-    console.log('Making OpenAI API call:', {
-      model: modelToUse,
-      messageCount: messages.length,
-      hasRubric: !!rubric,
+    console.log('Calling secure AI analysis Edge Function:', {
+      hasContent: !!content,
+      hasBase64Image: !!base64Image,
       isImageFile,
       useGPT4Vision,
-      isOCR: isImageFile && !useGPT4Vision,
+      hasRubric: !!rubric,
       assignmentWeight
     });
 
-
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+    // Call the secure Edge Function
+    const { data, error } = await supabase.functions.invoke('ai-analysis', {
+      body: {
+        content,
+        base64Image,
+        fileType: file.type,
+        rubric,
+        assignmentWeight,
+        useGPT4Vision,
+        isImageFile,
+        userId,
+        assignmentName
       },
-      body: JSON.stringify({
-        model: modelToUse,
-        messages,
-        max_tokens: 1500,
-        temperature: 0.7,
-      }),
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
     });
 
-    console.log('OpenAI API response status:', response.status);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI API error response:', errorText);
-      throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${errorText}`);
+    if (error) {
+      console.error('Edge Function error:', error);
+      throw new Error(`AI analysis failed: ${error.message || 'Unknown server error'}`);
     }
 
-    const data = await response.json();
-    
-    // Log token usage information
-    console.log('OpenAI API response data:', {
-      usage: data.usage,
-      model: data.model,
-      responseLength: data.choices[0]?.message?.content?.length || 0
-    });
-    
-    const aiResponse = data.choices[0].message.content;
-
-    let result: AnalysisResult;
-
-    try {
-      const parsedResponse = JSON.parse(aiResponse);
-      
-      let ocrNote = '';
-      if (isImageFile && !useGPT4Vision) {
-        ocrNote = ' (Note: Text was extracted from image using OCR)';
-      }
-      
-      const fallbackEditableText = isImageFile ? 
-        'Editable text could not be generated for the image.' : 
-        content; // Use original content, not truncated
-        
-      result = {
-        feedback: (parsedResponse.feedback || []).map((item: FeedbackItem) => ({
-          ...item,
-          explanation: `${item.explanation}${ocrNote}`
-        })),
-        overallScore: parsedResponse.overallScore || 85,
-        summary: `${ocrNote ? '[OCR Analysis] ' : ''}${wasTruncated ? '[Large Document - Truncated for Analysis] ' : ''}${parsedResponse.summary || 'Analysis completed'}`,
-        editable_text: parsedResponse.editable_text || fallbackEditableText
-      };
-    } catch (parseError) {
-      console.error('Failed to parse AI response as JSON:', { parseError, aiResponse });
-      // Fallback if JSON parsing fails
-      const analysisType = isImageFile && !useGPT4Vision 
-        ? 'OCR Analysis' 
-        : (isImageFile ? 'AI Vision Analysis' : 'AI Feedback');
-
-      result = {
-        feedback: [
-          {
-            type: 'improvement' as const,
-            title: analysisType,
-            description: aiResponse,
-            explanation: `Detailed feedback from AI analysis. The AI response was not in the expected format.`,
-            location: 'Overall document'
-          }
-        ],
-        overallScore: 85,
-        summary: `${wasTruncated ? '[Large Document - Truncated for Analysis] ' : ''}${aiResponse.substring(0, 200)}...`,
-        editable_text: isImageFile ? 'Could not generate editable text for image.' : content // Use original content
-      };
+    if (!data) {
+      throw new Error('No response from AI analysis service');
     }
 
-    // Deduct credits after successful analysis
-    if (userId && assignmentName) {
-      let operation: 'text_analysis' | 'image_analysis' | 'image_ocr' = 'text_analysis';
-      
-      if (isImageFile) {
-        operation = useGPT4Vision ? 'image_analysis' : 'image_ocr';
-      }
-      
-      const requiredCredits = getCreditCost(operation);
-      
-      const deductionSuccess = await deductCredits(userId, requiredCredits, assignmentName);
-      if (!deductionSuccess) {
-        console.warn('Failed to deduct credits after analysis');
-      }
-    }
-
-    return result;
+    console.log('✅ AI analysis completed successfully');
+    return data as AnalysisResult;
 
   } catch (error) {
-    console.error('Error calling OpenAI API:', error);
+    console.error('Error in AI analysis:', error);
     
     // Log detailed error information for debugging
     if (error instanceof Error) {
@@ -441,12 +209,11 @@ Please provide feedback in the following JSON format:
       });
     }
     
-    // Re-throw the error instead of using fallback data
-    // This ensures users know when the API call failed
+    // Re-throw the error with a user-friendly message
     if (error instanceof Error) {
-      throw new Error(`AI analysis failed: ${error.message}. Please check your API key and try again.`);
+      throw new Error(`AI analysis failed: ${error.message}`);
     } else {
-      throw new Error('AI analysis failed. Please check your API key and try again.');
+      throw new Error('AI analysis failed. Please try again.');
     }
   }
 };
@@ -463,3 +230,4 @@ export const generateDetailedFeedback = (basicFeedback: string) => {
     }
   ];
 };
+
