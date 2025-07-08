@@ -16,6 +16,7 @@ import NotFound from "./pages/NotFound";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import AllAssignments from "./pages/AllAssignments";
 import Checkout from "./pages/Checkout";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 const queryClient = new QueryClient();
 
@@ -24,7 +25,8 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-        <AuthProvider>
+      <SpeedInsights />
+      <AuthProvider>
         <Router>
           <Routes>
             <Route path="/" element={<Landing />} />
@@ -56,7 +58,7 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Router>
-        </AuthProvider>
+      </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );
