@@ -163,7 +163,7 @@ const Dashboard = () => {
                     Settings
                   </Button>
                 </SheetTrigger>
-                <SheetContent className="p-0">
+                <SheetContent side="right" className="w-[450px] p-0">
                   <SettingsPanel />
                 </SheetContent>
               </Sheet>

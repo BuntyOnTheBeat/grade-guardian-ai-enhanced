@@ -15,7 +15,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 interface Class {
   id: string;
@@ -23,14 +22,17 @@ interface Class {
   visible?: boolean;
 }
 
-const SettingsPanel = () => {
+interface SettingsPanelProps {
+  onClose?: () => void;
+}
+
+const SettingsPanel = ({ onClose }: SettingsPanelProps) => {
   const { settings, updateSettings, loading } = useUserSettings();
   const { user, signOut } = useAuth();
   const [classes, setClasses] = useState<Class[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [currentView, setCurrentView] = useState<'main' | 'credits'>('main');
   const [isVisibilityOpen, setIsVisibilityOpen] = useState(true);
-  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -75,19 +77,44 @@ const SettingsPanel = () => {
     await signOut();
   };
 
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline">
-          <Settings className="h-4 w-4 mr-2" />
-          Settings
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-lg">
-        <DialogTitle>Settings</DialogTitle>
-        <DialogDescription>Manage your preferences and account settings.</DialogDescription>
+  if (currentView === 'credits') {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="flex items-center justify-between p-6 border-b">
+          <Button 
+            variant="ghost" 
+            onClick={() => setCurrentView('main')}
+            className="p-2"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Settings
+          </Button>
+          <h2 className="text-lg font-semibold">Credits & Usage</h2>
+          <div className="w-10"></div> {/* Spacer for centering */}
+        </div>
         <ScrollArea className="flex-1">
-          <div className="space-y-6 p-6">
+          <div className="p-6">
+            <CreditsPanel />
+          </div>
+        </ScrollArea>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="p-6 border-b">
+        <h2 className="text-lg font-semibold">Settings</h2>
+        <p className="text-sm text-gray-500 mt-1">
+          Manage your preferences and account settings
+        </p>
+      </div>
+      
+      <ScrollArea className="flex-1">
+        <div className="p-6 space-y-6">
+          {/* Privacy Settings */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-gray-900">Privacy</h3>
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <Label htmlFor="private-grades">Private Grades</Label>
@@ -101,6 +128,13 @@ const SettingsPanel = () => {
                 onCheckedChange={(value) => updateSettings({ grades_private: value })}
               />
             </div>
+          </div>
+
+          <Separator />
+
+          {/* AI Settings */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-gray-900">AI Analysis</h3>
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -110,7 +144,7 @@ const SettingsPanel = () => {
                   )}
                 </div>
                 <p className="text-sm text-gray-500">
-                  Use advanced GPT-4 Vision for image analysis (Pro users only). Free and Student users get OCR + GPT-3.5.
+                  Use advanced GPT-4 Vision for image analysis (Pro users only)
                 </p>
               </div>
               <Switch
@@ -128,7 +162,12 @@ const SettingsPanel = () => {
                 </p>
               </div>
             )}
-            <Separator />
+          </div>
+
+          <Separator />
+
+          {/* Class Visibility */}
+          <div className="space-y-4">
             <Collapsible
               open={isVisibilityOpen}
               onOpenChange={setIsVisibilityOpen}
@@ -176,51 +215,41 @@ const SettingsPanel = () => {
                 )}
               </CollapsibleContent>
             </Collapsible>
-            <Separator />
-            <div className="space-y-2">
-              <Button
-                variant="ghost"
-                onClick={() => setCurrentView('credits')}
-                className="w-full justify-between hover:bg-blue-50"
-              >
-                <div className="flex items-center">
-                  <Zap className="h-4 w-4 mr-2 text-blue-600" />
-                  <span>Credits & Usage</span>
-                </div>
-                <ChevronRight className="h-4 w-4 text-gray-400" />
-              </Button>
-            </div>
-            <Separator />
-            <div className="pt-2">
-              <Button
-                variant="outline"
-                onClick={handleSignOut}
-                className="w-full justify-start text-red-600 hover:text-red-700"
-              >
-                <LogOut className="h-4 w-4 mr-2" />
-                Sign Out
-              </Button>
-            </div>
           </div>
-        </ScrollArea>
-      </DialogContent>
-      {/* Credits Modal as a separate Dialog if needed */}
-      <Dialog open={currentView === 'credits'} onOpenChange={(open) => setCurrentView(open ? 'credits' : 'main')}>
-        <DialogContent className="max-w-lg">
-          <DialogTitle>Credits & Usage</DialogTitle>
-          <DialogDescription>View your credit usage and purchase more credits.</DialogDescription>
-          <ScrollArea className="flex-1">
-            <div className="p-6">
-              <CreditsPanel />
-              <Button variant="ghost" onClick={() => setCurrentView('main')} className="mt-4">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Settings
-              </Button>
-            </div>
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
-    </Dialog>
+
+          <Separator />
+
+          {/* Credits */}
+          <div className="space-y-2">
+            <Button
+              variant="ghost"
+              onClick={() => setCurrentView('credits')}
+              className="w-full justify-between hover:bg-blue-50"
+            >
+              <div className="flex items-center">
+                <Zap className="h-4 w-4 mr-2 text-blue-600" />
+                <span>Credits & Usage</span>
+              </div>
+              <ChevronRight className="h-4 w-4 text-gray-400" />
+            </Button>
+          </div>
+
+          <Separator />
+
+          {/* Sign Out */}
+          <div className="pt-2">
+            <Button
+              variant="outline"
+              onClick={handleSignOut}
+              className="w-full justify-start text-red-600 hover:text-red-700"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Sign Out
+            </Button>
+          </div>
+        </div>
+      </ScrollArea>
+    </div>
   );
 };
 
