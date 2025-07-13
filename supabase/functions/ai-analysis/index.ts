@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { z } from "zod";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -83,12 +84,38 @@ const truncateTextForAnalysis = (content: string, maxTokens: number = 12000): st
   return truncatedContent;
 };
 
+// Define your Zod schema for the request body
+const RequestSchema = z.object({
+  content: z.string().optional(),
+  base64Image: z.string().optional(),
+  fileType: z.string(),
+  rubric: z.string().optional(),
+  assignmentWeight: z.number().optional(),
+  useGPT4Vision: z.boolean().optional(),
+  isImageFile: z.boolean().optional(),
+  userId: z.string().optional(),
+  assignmentName: z.string().optional(),
+});
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
+    const body = await req.json();
+    console.log("Received body:", JSON.stringify(body, null, 2));
+
+    // Validate with Zod
+    const parsed = RequestSchema.safeParse(body);
+    if (!parsed.success) {
+      console.error("Zod validation error:", parsed.error);
+      return new Response(
+        JSON.stringify({ error: "Invalid request body", details: parsed.error.errors }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     // Get OpenAI API key from environment
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openaiApiKey) {
@@ -115,7 +142,7 @@ serve(async (req) => {
     }
 
     // Parse request body
-    const requestData: AnalysisRequest = await req.json();
+    const requestData: AnalysisRequest = parsed.data;
     const {
       content,
       base64Image,
@@ -160,6 +187,7 @@ serve(async (req) => {
     }
 
     // Handle OCR for images when not using GPT-4 Vision
+    let processedContent = content;
     if (isImageFile && !useGPT4Vision && base64Image) {
       // First extract text using OCR, then analyze the text
       const ocrResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -197,7 +225,7 @@ serve(async (req) => {
       }
 
       const ocrData = await ocrResponse.json();
-      content = ocrData.choices[0].message.content || 'No text could be extracted from the image.';
+      processedContent = ocrData.choices[0].message.content || 'No text could be extracted from the image.';
     }
 
     // Prepare OpenAI API request
@@ -251,13 +279,13 @@ Please provide feedback in the following JSON format:
       modelToUse = "gpt-4o";
     } else {
       // Handle text content
-      if (!content) {
+      if (!processedContent) {
         throw new Error('Content is required for text analysis');
       }
 
       // Apply intelligent truncation
-      const truncatedContent = truncateTextForAnalysis(content);
-      const wasTruncated = content !== truncatedContent;
+      const truncatedContent = truncateTextForAnalysis(processedContent);
+      const wasTruncated = processedContent !== truncatedContent;
       
       const isOcrText = isImageFile && !useGPT4Vision;
       const prompt = `Please analyze this assignment submission and provide detailed feedback. ${isOcrText ? '(This assignment was extracted from an image using OCR, so be mindful of potential errors.)' : ''} ${wasTruncated ? '(Note: This document was truncated for analysis due to length, but the full content is preserved for grading.)' : ''} ${rubric ? `Use this rubric for evaluation: ${rubric}` : ''} ${assignmentWeight > 0 ? `This assignment is worth ${assignmentWeight}% of the total grade.` : ''}

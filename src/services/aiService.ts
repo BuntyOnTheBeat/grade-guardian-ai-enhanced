@@ -186,8 +186,11 @@ export const analyzeHomework = async (
     });
 
     if (error) {
-      console.error('Edge Function error:', error);
-      throw new Error(`AI analysis failed: ${error.message || 'Unknown server error'}`);
+      // Show detailed error if available
+      let userMessage = "AI analysis failed.";
+      if (error.message) userMessage += " " + error.message;
+      if (error.details) userMessage += " " + JSON.stringify(error.details);
+      throw new Error(userMessage);
     }
 
     if (!data) {
